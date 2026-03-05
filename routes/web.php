@@ -5,8 +5,7 @@ declare(strict_types=1);
 use App\Http\Controllers\AbsenceController;
 use App\Http\Controllers\AppActivityController;
 use App\Http\Controllers\BugAndFeedbackController;
-use App\Http\Controllers\Export\CsvController;
-use App\Http\Controllers\Export\ExcelController;
+use App\Http\Controllers\Export\ExportController;
 use App\Http\Controllers\FlyTimerController;
 use App\Http\Controllers\HolidayRuleController;
 use App\Http\Controllers\Import\ClockifyController;
@@ -34,7 +33,6 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Redirector;
 use Native\Desktop\Facades\App;
-use Native\Desktop\Support\Environment;
 
 Route::get('/', function (GeneralSettings $settings): Redirector|RedirectResponse {
     $target = $settings->default_overview ?? 'week';
@@ -126,10 +124,7 @@ Route::resource('import-export', ImportExportController::class);
 Route::name('import.')->prefix('import')->group(function (): void {
     Route::resource('clockify', ClockifyController::class)->only(['create', 'store']);
 });
-Route::name('export.')->prefix('export')->group(function (): void {
-    Route::post('csv', CsvController::class)->name('csv');
-    Route::post('excel', ExcelController::class)->name('excel');
-});
+Route::singleton('export', ExportController::class)->creatable()->only(['create', 'store']);
 
 Route::resource('work-schedule', WorkScheduleController::class)->only('index', 'create', 'store', 'edit', 'update', 'destroy');
 
@@ -168,11 +163,18 @@ Route::name('bug-and-feedback.')->prefix('bug-and-feedback')->group(function ():
 });
 
 Route::get('open', function (Request $request): void {
-    if (Environment::isWindows()) {
-        shell_exec('explorer "'.$request->string('url').'"');
-    } else {
-        shell_exec('open "'.$request->string('url').'"');
+    $url = $request->string('url')->toString();
+
+    if (! filter_var($url, FILTER_VALIDATE_URL)) {
+        abort(400);
     }
+
+    $scheme = parse_url($url, PHP_URL_SCHEME);
+    if (! in_array(strtolower((string) $scheme), ['http', 'https'], true)) {
+        abort(400);
+    }
+
+    Shell::openExternal($url);
 })->name('open');
 
 Route::get('/app-icon/{appIconName}', function ($appIconName) {
